@@ -1,0 +1,135 @@
+1. Escriba el código de SQL que le permite conocer el monto y la cantidad de las transacciones que SIMETRIK considera como conciliables para la base de CLAP
+
+SELECT 
+    c1.CODIGO_AUTORIZACION AS Numero_de_conciliaciones_CLAP, 
+    SUM(c1.MONTO) AS monto_total
+FROM 
+    CLAP c1
+INNER JOIN 
+    (SELECT 
+        CODIGO_AUTORIZACION, 
+        MAX(FECHA_TRANSACCION) AS max_fecha
+    FROM 
+        CLAP
+    WHERE 
+        TIPO_TRX = 'PAGADA' 
+        AND MONTO = (SELECT MAX(MONTO) FROM CLAP)
+    GROUP BY 
+        CODIGO_AUTORIZACION
+    ) c2 
+ON 
+    c1.CODIGO_AUTORIZACION = c2.CODIGO_AUTORIZACION 
+    AND c1.FECHA_TRANSACCION = c2.max_fecha
+WHERE 
+    c1.TIPO_TRX = 'PAGADA' 
+    AND MONTO = (SELECT MAX(MONTO) FROM CLAP)
+GROUP BY 
+    c1.CODIGO_AUTORIZACION
+ORDER BY 
+    monto_total DESC;
+
+
+
+
+
+2. Escriba el código de SQL que le permite conocer el monto y la cantidad de las transacciones que SIMETRIK considera como conciliables para la base de BANSUR
+
+SELECT
+    c1.CODIGO_AUTORIZACION AS Numero_de_conciliaciones_BANSUR,
+    SUM(c1.MONTO) AS monto_total
+FROM
+    BANSUR c1
+INNER JOIN
+    (
+        SELECT
+            CODIGO_AUTORIZACION,
+            MAX(FECHA_TRANSACCION) AS max_fecha
+        FROM
+            BANSUR
+        WHERE
+            TIPO_TRX = 'PAGO'
+            AND MONTO = (SELECT MAX(MONTO) FROM BANSUR)
+        GROUP BY
+            CODIGO_AUTORIZACION
+    ) c2
+ON
+    c1.CODIGO_AUTORIZACION = c2.CODIGO_AUTORIZACION
+    AND c1.FECHA_TRANSACCION = c2.max_fecha
+WHERE
+    c1.TIPO_TRX = 'PAGO'
+    AND MONTO = (SELECT MAX(MONTO) FROM BANSUR)
+GROUP BY
+    c1.CODIGO_AUTORIZACION
+ORDER BY
+    monto_total ASC;
+
+
+
+
+3. ¿Cómo se comparan las cifras de los puntos anteriores respecto de las cifras totales en las fuentes desde un punto de vista del negocio?
+
+Se calculan porcentajes basados en las transacciones realizadas en cada fuente de datos y luego se comparan estos porcentajes con los datos registrados en el datafono. La idea es verificar si las cifras concuerdan o son consistentes entre las fuentes.
+
+
+4. Teniendo en cuenta los criterios de cruce entre ambas bases conciliables, escriba una sentencia de SQL que contenga la información de CLAP y BANSUR; agregue una columna en la que se evidencie si la transacción cruzó o no con su contrapartida y una columna en la que se inserte un ID autoincremental para el control de la conciliación
+
+SELECT
+    ROW_NUMBER() OVER (ORDER BY c1.CODIGO_AUTORIZACION) AS ID_Conciliacion,
+    c1.CODIGO_AUTORIZACION AS Numero_de_conciliaciones,
+    c1.FECHA_TRANSACCION AS Fecha_de_transaccion,
+    c1.MONTO AS Monto,
+    c1.TIPO_TRX AS Tipo_de_transaccion,
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM BANSUR c2
+            WHERE c1.CODIGO_AUTORIZACION = c2.CODIGO_AUTORIZACION
+                AND c1.FECHA_TRANSACCION = c2.FECHA_TRANSACCION
+                AND c1.MONTO = c2.MONTO
+                AND c1.TIPO_TRX = c2.TIPO_TRX
+        ) THEN 'Cruzada'
+        ELSE 'No Cruzada'
+    END AS Cruzada_con_contrapartida
+FROM CLAP c1
+ORDER BY ID_Conciliacion;
+
+
+
+
+5. Diseñe un código que calcule el porcentaje de transacciones de la base conciliable de CLAP cruzó contra la liquidación de BANSUR.
+
+SELECT 
+    (COUNT(DISTINCT c1.CODIGO_AUTORIZACION) / COUNT(*)) * 100 AS Porcentaje_de_Cruce
+FROM 
+    CLAP c1
+WHERE 
+    EXISTS (
+        SELECT 1
+        FROM 
+            BANSUR c2
+        WHERE 
+            c1.CODIGO_AUTORIZACION = c2.CODIGO_AUTORIZACION
+            AND c1.FECHA_TRANSACCION = c2.FECHA_TRANSACCION
+            AND c1.MONTO = c2.MONTO
+            AND c1.TIPO_TRX = c2.TIPO_TRX
+    );
+
+
+6. Diseñe un código que calcule el porcentaje de transacciones de la base conciliable de BANSUR no cruzó contra la liquidación de CLAP.
+SELECT 
+    (COUNT(DISTINCT c1.CODIGO_AUTORIZACION) / COUNT(*)) * 100 AS Porcentaje_no_Cruzado
+FROM 
+    BANSUR c1
+WHERE 
+    NOT EXISTS (
+        SELECT 1
+        FROM 
+            CLAP c2
+        WHERE 
+            c1.CODIGO_AUTORIZACION = c2.CODIGO_AUTORIZACION
+            AND c1.FECHA_TRANSACCION = c2.FECHA_TRANSACCION
+            AND c1.MONTO = c2.MONTO
+            AND c1.TIPO_TRX = c2.TIPO_TRX
+    );
+
+
